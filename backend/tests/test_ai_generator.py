@@ -267,7 +267,7 @@ class TestAIGeneratorToolExecution:
         mock_anthropic_client: Mock,
         sample_tools: list[dict[str, Any]],
     ) -> None:
-        """Test that _handle_tool_execution calls ToolManager.execute_tool."""
+        """Test that tool execution calls ToolManager.execute_tool."""
         # Arrange: First response requests tool use
         tool_use_block = Mock()
         tool_use_block.type = "tool_use"
@@ -485,7 +485,7 @@ class TestAIGeneratorErrorPropagation:
         self,
         ai_generator: AIGenerator,
     ) -> None:
-        """Test error during _handle_tool_execution second API call.
+        """Test error during follow-up API call after tool execution.
 
         The second API call (after tool execution) errors are wrapped.
         """
@@ -572,3 +572,379 @@ class TestAIGeneratorErrorPropagation:
             ai_generator.generate_response(query="test")
 
         assert exc_info.value.original_error is original_error
+
+
+class TestSequentialToolCalling:
+    """Tests for sequential tool calling functionality (up to 2 rounds)."""
+
+    @pytest.fixture
+    def mock_anthropic_client(self) -> Mock:
+        """Create a mock Anthropic client."""
+        client = Mock()
+        client.messages = Mock()
+        return client
+
+    @pytest.fixture
+    def ai_generator(self, mock_anthropic_client: Mock) -> AIGenerator:
+        """Create AIGenerator with mocked client."""
+        with patch("ai_generator.anthropic.Anthropic") as mock_class:
+            mock_class.return_value = mock_anthropic_client
+            generator = AIGenerator(api_key="test-key", model="test-model")
+            generator.client = mock_anthropic_client
+            return generator
+
+    @pytest.fixture
+    def sample_tools(self) -> list[dict[str, Any]]:
+        """Sample tool definitions."""
+        return [
+            {"name": "get_course_outline", "input_schema": {"type": "object"}},
+            {"name": "search_course_content", "input_schema": {"type": "object"}},
+        ]
+
+    def test_two_sequential_tool_calls(
+        self,
+        ai_generator: AIGenerator,
+        mock_anthropic_client: Mock,
+        sample_tools: list[dict[str, Any]],
+    ) -> None:
+        """Test that Claude can make 2 tool calls sequentially.
+
+        Scenario: User asks complex question requiring 2 tools.
+        Round 1: Claude calls get_course_outline
+        Round 2: Claude calls search_course_content with info from round 1
+        Final: Claude synthesizes answer from both results
+        """
+        # Arrange: Create tool use blocks
+        tool_use_1 = Mock()
+        tool_use_1.type = "tool_use"
+        tool_use_1.name = "get_course_outline"
+        tool_use_1.id = "tool_1"
+        tool_use_1.input = {"course_title": "MCP"}
+
+        tool_use_2 = Mock()
+        tool_use_2.type = "tool_use"
+        tool_use_2.name = "search_course_content"
+        tool_use_2.id = "tool_2"
+        tool_use_2.input = {"query": "lesson 4 topic"}
+
+        # Mock responses: tool_use -> tool_use -> final text
+        response_1 = Mock()
+        response_1.stop_reason = "tool_use"
+        response_1.content = [tool_use_1]
+
+        response_2 = Mock()
+        response_2.stop_reason = "tool_use"
+        response_2.content = [tool_use_2]
+
+        response_3 = Mock()
+        response_3.stop_reason = "end_turn"
+        response_3.content = [Mock(type="text", text="Final answer using both tools")]
+
+        mock_anthropic_client.messages.create.side_effect = [
+            response_1,
+            response_2,
+            response_3,
+        ]
+
+        mock_tool_manager = Mock()
+        mock_tool_manager.execute_tool.side_effect = [
+            "Outline: Lesson 4 is about MCP Servers",
+            "Search results about MCP Servers",
+        ]
+
+        # Act
+        result = ai_generator.generate_response(
+            query="What does lesson 4 of the MCP course cover?",
+            tools=sample_tools,
+            tool_manager=mock_tool_manager,
+        )
+
+        # Assert
+        assert result == "Final answer using both tools"
+        assert mock_anthropic_client.messages.create.call_count == 3
+        assert mock_tool_manager.execute_tool.call_count == 2
+
+    def test_max_two_rounds_enforced(
+        self,
+        ai_generator: AIGenerator,
+        mock_anthropic_client: Mock,
+        sample_tools: list[dict[str, Any]],
+    ) -> None:
+        """Test that system enforces MAX_TOOL_ROUNDS=2 limit.
+
+        Even if Claude keeps requesting tools, only 2 rounds are allowed.
+        After 2 rounds, a final call WITHOUT tools forces a text response.
+        """
+        # Arrange: Claude keeps requesting tool_use
+        tool_use = Mock()
+        tool_use.type = "tool_use"
+        tool_use.name = "search_course_content"
+        tool_use.id = "tool_1"
+        tool_use.input = {"query": "test"}
+
+        tool_response = Mock()
+        tool_response.stop_reason = "tool_use"
+        tool_response.content = [tool_use]
+
+        final_response = Mock()
+        final_response.stop_reason = "end_turn"
+        final_response.content = [Mock(type="text", text="Forced final answer")]
+
+        # 2 tool rounds + 1 final call without tools = 3 total calls
+        mock_anthropic_client.messages.create.side_effect = [
+            tool_response,
+            tool_response,
+            final_response,
+        ]
+
+        mock_tool_manager = Mock()
+        mock_tool_manager.execute_tool.return_value = "Tool result"
+
+        # Act
+        result = ai_generator.generate_response(
+            query="Keep searching",
+            tools=sample_tools,
+            tool_manager=mock_tool_manager,
+        )
+
+        # Assert
+        assert result == "Forced final answer"
+        assert mock_anthropic_client.messages.create.call_count == 3
+        assert mock_tool_manager.execute_tool.call_count == 2
+
+    def test_tools_available_in_second_round(
+        self,
+        ai_generator: AIGenerator,
+        mock_anthropic_client: Mock,
+        sample_tools: list[dict[str, Any]],
+    ) -> None:
+        """Test that tools are still available in the second API call.
+
+        This is the core fix - previously tools were removed after round 1.
+        """
+        # Arrange
+        tool_use = Mock()
+        tool_use.type = "tool_use"
+        tool_use.name = "get_course_outline"
+        tool_use.id = "tool_1"
+        tool_use.input = {"course_title": "MCP"}
+
+        first_response = Mock()
+        first_response.stop_reason = "tool_use"
+        first_response.content = [tool_use]
+
+        second_response = Mock()
+        second_response.stop_reason = "end_turn"
+        second_response.content = [Mock(type="text", text="Answer")]
+
+        mock_anthropic_client.messages.create.side_effect = [
+            first_response,
+            second_response,
+        ]
+
+        mock_tool_manager = Mock()
+        mock_tool_manager.execute_tool.return_value = "Outline result"
+
+        # Act
+        ai_generator.generate_response(
+            query="test",
+            tools=sample_tools,
+            tool_manager=mock_tool_manager,
+        )
+
+        # Assert: Verify tools were passed in BOTH API calls
+        call_1 = mock_anthropic_client.messages.create.call_args_list[0][1]
+        call_2 = mock_anthropic_client.messages.create.call_args_list[1][1]
+
+        assert "tools" in call_1
+        assert call_1["tools"] == sample_tools
+        assert "tools" in call_2
+        assert call_2["tools"] == sample_tools
+
+    def test_message_history_accumulates_across_rounds(
+        self,
+        ai_generator: AIGenerator,
+        mock_anthropic_client: Mock,
+        sample_tools: list[dict[str, Any]],
+    ) -> None:
+        """Test that messages list properly accumulates through rounds.
+
+        After 2 tool rounds, messages should be:
+        [user query, assistant tool_use, user tool_result,
+         assistant tool_use, user tool_result]
+        """
+        # Arrange
+        tool_use_1 = Mock()
+        tool_use_1.type = "tool_use"
+        tool_use_1.name = "get_course_outline"
+        tool_use_1.id = "tool_1"
+        tool_use_1.input = {"course_title": "MCP"}
+
+        tool_use_2 = Mock()
+        tool_use_2.type = "tool_use"
+        tool_use_2.name = "search_course_content"
+        tool_use_2.id = "tool_2"
+        tool_use_2.input = {"query": "topic"}
+
+        response_1 = Mock()
+        response_1.stop_reason = "tool_use"
+        response_1.content = [tool_use_1]
+
+        response_2 = Mock()
+        response_2.stop_reason = "tool_use"
+        response_2.content = [tool_use_2]
+
+        response_3 = Mock()
+        response_3.stop_reason = "end_turn"
+        response_3.content = [Mock(type="text", text="Final answer")]
+
+        mock_anthropic_client.messages.create.side_effect = [
+            response_1,
+            response_2,
+            response_3,
+        ]
+
+        mock_tool_manager = Mock()
+        mock_tool_manager.execute_tool.side_effect = ["Result 1", "Result 2"]
+
+        # Act
+        ai_generator.generate_response(
+            query="Complex query",
+            tools=sample_tools,
+            tool_manager=mock_tool_manager,
+        )
+
+        # Assert: Check final API call's messages
+        final_call = mock_anthropic_client.messages.create.call_args_list[2][1]
+        messages = final_call["messages"]
+
+        # Should have 5 messages after 2 tool rounds
+        assert len(messages) == 5
+        assert messages[0]["role"] == "user"  # Original query
+        assert messages[1]["role"] == "assistant"  # Round 1 tool use
+        assert messages[2]["role"] == "user"  # Round 1 tool result
+        assert messages[3]["role"] == "assistant"  # Round 2 tool use
+        assert messages[4]["role"] == "user"  # Round 2 tool result
+
+    def test_single_tool_call_still_works(
+        self,
+        ai_generator: AIGenerator,
+        mock_anthropic_client: Mock,
+        sample_tools: list[dict[str, Any]],
+    ) -> None:
+        """Test backward compatibility: single tool call still works.
+
+        When Claude only needs one tool call and then answers, it should work.
+        """
+        # Arrange
+        tool_use = Mock()
+        tool_use.type = "tool_use"
+        tool_use.name = "search_course_content"
+        tool_use.id = "tool_1"
+        tool_use.input = {"query": "test"}
+
+        first_response = Mock()
+        first_response.stop_reason = "tool_use"
+        first_response.content = [tool_use]
+
+        second_response = Mock()
+        second_response.stop_reason = "end_turn"
+        second_response.content = [Mock(type="text", text="Answer from search")]
+
+        mock_anthropic_client.messages.create.side_effect = [
+            first_response,
+            second_response,
+        ]
+
+        mock_tool_manager = Mock()
+        mock_tool_manager.execute_tool.return_value = "Search results"
+
+        # Act
+        result = ai_generator.generate_response(
+            query="Simple question",
+            tools=sample_tools,
+            tool_manager=mock_tool_manager,
+        )
+
+        # Assert
+        assert result == "Answer from search"
+        assert mock_anthropic_client.messages.create.call_count == 2
+        assert mock_tool_manager.execute_tool.call_count == 1
+
+    def test_no_tool_use_returns_immediately(
+        self,
+        ai_generator: AIGenerator,
+        mock_anthropic_client: Mock,
+        sample_tools: list[dict[str, Any]],
+    ) -> None:
+        """Test that direct answer (no tool_use) returns without looping."""
+        # Arrange
+        mock_response = Mock()
+        mock_response.stop_reason = "end_turn"
+        mock_response.content = [Mock(type="text", text="Direct answer")]
+        mock_anthropic_client.messages.create.return_value = mock_response
+
+        mock_tool_manager = Mock()
+
+        # Act
+        result = ai_generator.generate_response(
+            query="General knowledge question",
+            tools=sample_tools,
+            tool_manager=mock_tool_manager,
+        )
+
+        # Assert
+        assert result == "Direct answer"
+        assert mock_anthropic_client.messages.create.call_count == 1
+        mock_tool_manager.execute_tool.assert_not_called()
+
+    def test_max_tool_rounds_constant_is_two(self) -> None:
+        """Verify MAX_TOOL_ROUNDS class constant is set to 2."""
+        assert AIGenerator.MAX_TOOL_ROUNDS == 2
+
+    def test_final_call_omits_tools_after_max_rounds(
+        self,
+        ai_generator: AIGenerator,
+        mock_anthropic_client: Mock,
+        sample_tools: list[dict[str, Any]],
+    ) -> None:
+        """Test that the final API call after max rounds does not include tools.
+
+        This forces Claude to provide a text response instead of
+        requesting more tools.
+        """
+        # Arrange: Claude keeps requesting tools
+        tool_use = Mock()
+        tool_use.type = "tool_use"
+        tool_use.name = "search_course_content"
+        tool_use.id = "tool_1"
+        tool_use.input = {"query": "test"}
+
+        tool_response = Mock()
+        tool_response.stop_reason = "tool_use"
+        tool_response.content = [tool_use]
+
+        final_response = Mock()
+        final_response.stop_reason = "end_turn"
+        final_response.content = [Mock(type="text", text="Final")]
+
+        mock_anthropic_client.messages.create.side_effect = [
+            tool_response,
+            tool_response,
+            final_response,
+        ]
+
+        mock_tool_manager = Mock()
+        mock_tool_manager.execute_tool.return_value = "Result"
+
+        # Act
+        ai_generator.generate_response(
+            query="test",
+            tools=sample_tools,
+            tool_manager=mock_tool_manager,
+        )
+
+        # Assert: Final call (3rd) should NOT include tools
+        final_call = mock_anthropic_client.messages.create.call_args_list[2][1]
+        assert "tools" not in final_call
+        assert "tool_choice" not in final_call
