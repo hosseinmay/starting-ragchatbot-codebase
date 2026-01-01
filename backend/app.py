@@ -40,10 +40,15 @@ class QueryRequest(BaseModel):
     query: str
     session_id: Optional[str] = None
 
+class SourceItem(BaseModel):
+    """Model for a source citation with optional link"""
+    title: str
+    url: Optional[str] = None
+
 class QueryResponse(BaseModel):
     """Response model for course queries"""
     answer: str
-    sources: List[str]
+    sources: List[SourceItem]
     session_id: str
 
 class CourseStats(BaseModel):
@@ -85,6 +90,12 @@ async def get_course_stats():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/api/session/{session_id}")
+async def clear_session(session_id: str):
+    """Clear a session's conversation history"""
+    rag_system.session_manager.clear_session(session_id)
+    return {"status": "cleared", "session_id": session_id}
+
 @app.on_event("startup")
 async def startup_event():
     """Load initial documents on startup"""
@@ -115,5 +126,5 @@ class DevStaticFiles(StaticFiles):
         return response
     
     
-# Serve static files for the frontend
-app.mount("/", StaticFiles(directory="../frontend", html=True), name="static")
+# Serve static files for the frontend with no-cache headers
+app.mount("/", DevStaticFiles(directory="../frontend", html=True), name="static")

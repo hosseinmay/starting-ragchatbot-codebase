@@ -28,8 +28,10 @@ function setupEventListeners() {
     chatInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') sendMessage();
     });
-    
-    
+
+    // New chat button
+    document.getElementById('newChatBtn').addEventListener('click', handleNewChat);
+
     // Suggested questions
     document.querySelectorAll('.suggested-item').forEach(button => {
         button.addEventListener('click', (e) => {
@@ -122,10 +124,17 @@ function addMessage(content, type, sources = null, isWelcome = false) {
     let html = `<div class="message-content">${displayContent}</div>`;
     
     if (sources && sources.length > 0) {
+        const sourceElements = sources.map(source => {
+            if (source.url) {
+                return `<a href="${source.url}" target="_blank" rel="noopener">${source.title}</a>`;
+            }
+            return `<span>${source.title}</span>`;
+        }).join('');
+
         html += `
             <details class="sources-collapsible">
                 <summary class="sources-header">Sources</summary>
-                <div class="sources-content">${sources.join(', ')}</div>
+                <div class="sources-content">${sourceElements}</div>
             </details>
         `;
     }
@@ -150,6 +159,19 @@ async function createNewSession() {
     currentSessionId = null;
     chatMessages.innerHTML = '';
     addMessage('Welcome to the Course Materials Assistant! I can help you with questions about courses, lessons and specific content. What would you like to know?', 'assistant', null, true);
+}
+
+async function handleNewChat() {
+    // Clear backend session if exists
+    if (currentSessionId) {
+        try {
+            await fetch(`${API_URL}/session/${currentSessionId}`, { method: 'DELETE' });
+        } catch (e) {
+            // Ignore errors - session cleanup is optional
+        }
+    }
+    // Reuse existing createNewSession logic
+    createNewSession();
 }
 
 // Load course statistics
