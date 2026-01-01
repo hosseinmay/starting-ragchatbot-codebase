@@ -24,6 +24,15 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+    "ignore:resource_tracker:UserWarning",
+]
 markers = [
     "integration: marks tests as integration tests (require API key)",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
+addopts = "-v --tb=short"
