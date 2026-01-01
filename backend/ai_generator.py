@@ -53,18 +53,14 @@ All responses must be:
 3. **Clear** - Use accessible language
 4. **Example-supported** - Include examples when helpful
 """
-    
+
     def __init__(self, api_key: str, model: str):
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
-        
+
         # Pre-build base API parameters
-        self.base_params = {
-            "model": self.model,
-            "temperature": 0,
-            "max_tokens": 800
-        }
-    
+        self.base_params = {"model": self.model, "temperature": 0, "max_tokens": 800}
+
     def generate_response(
         self,
         query: str,
@@ -148,7 +144,7 @@ All responses must be:
 
         final_response = self._make_api_call(final_params)
         return self._extract_text_response(final_response)
-    
+
     def _make_api_call(self, api_params: Dict[str, Any]) -> Any:
         """
         Make an API call to Claude with error handling.
@@ -209,11 +205,13 @@ All responses must be:
                     content_block.name,
                     **content_block.input,
                 )
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": content_block.id,
-                    "content": tool_result,
-                })
+                tool_results.append(
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": content_block.id,
+                        "content": tool_result,
+                    }
+                )
         return tool_results
 
     def _extract_text_response(self, response: Any) -> str:

@@ -44,7 +44,9 @@ class TestAIGeneratorConfiguration:
     def test_model_name_preserved(self) -> None:
         """Test that model name is stored correctly in params."""
         with patch("ai_generator.anthropic.Anthropic"):
-            generator = AIGenerator(api_key="test-key", model="claude-sonnet-4-20250514")
+            generator = AIGenerator(
+                api_key="test-key", model="claude-sonnet-4-20250514"
+            )
 
             assert generator.model == "claude-sonnet-4-20250514"
             assert generator.base_params["model"] == "claude-sonnet-4-20250514"
@@ -281,9 +283,14 @@ class TestAIGeneratorToolExecution:
 
         final_response = Mock()
         final_response.stop_reason = "end_turn"
-        final_response.content = [Mock(type="text", text="Final answer based on search")]
+        final_response.content = [
+            Mock(type="text", text="Final answer based on search")
+        ]
 
-        mock_anthropic_client.messages.create.side_effect = [first_response, final_response]
+        mock_anthropic_client.messages.create.side_effect = [
+            first_response,
+            final_response,
+        ]
 
         mock_tool_manager = Mock()
         mock_tool_manager.execute_tool.return_value = "Search results here"
@@ -324,7 +331,10 @@ class TestAIGeneratorToolExecution:
         final_response.stop_reason = "end_turn"
         final_response.content = [Mock(type="text", text="Answer")]
 
-        mock_anthropic_client.messages.create.side_effect = [first_response, final_response]
+        mock_anthropic_client.messages.create.side_effect = [
+            first_response,
+            final_response,
+        ]
 
         mock_tool_manager = Mock()
         mock_tool_manager.execute_tool.return_value = "Search results here"
@@ -544,7 +554,9 @@ class TestAIGeneratorErrorPropagation:
         ai_generator.client.messages.create.return_value = first_response
 
         mock_tool_manager = Mock()
-        mock_tool_manager.execute_tool.side_effect = RuntimeError("Tool execution failed")
+        mock_tool_manager.execute_tool.side_effect = RuntimeError(
+            "Tool execution failed"
+        )
 
         # Act & Assert
         with pytest.raises(RuntimeError, match="Tool execution failed"):

@@ -136,9 +136,21 @@ def mock_vector_store() -> Mock:
         "instructor": "Test Instructor",
         "lesson_count": 3,
         "lessons": [
-            {"lesson_number": 0, "lesson_title": "Intro", "lesson_link": "https://example.com/0"},
-            {"lesson_number": 1, "lesson_title": "Basics", "lesson_link": "https://example.com/1"},
-            {"lesson_number": 2, "lesson_title": "Advanced", "lesson_link": "https://example.com/2"},
+            {
+                "lesson_number": 0,
+                "lesson_title": "Intro",
+                "lesson_link": "https://example.com/0",
+            },
+            {
+                "lesson_number": 1,
+                "lesson_title": "Basics",
+                "lesson_link": "https://example.com/1",
+            },
+            {
+                "lesson_number": 2,
+                "lesson_title": "Advanced",
+                "lesson_link": "https://example.com/2",
+            },
         ],
     }
     return store
