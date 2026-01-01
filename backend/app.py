@@ -11,6 +11,7 @@ import os
 
 from config import config
 from rag_system import RAGSystem
+from ai_generator import AIGeneratorError
 
 # Initialize FastAPI app
 app = FastAPI(title="Course Materials RAG System", root_path="")
@@ -66,13 +67,21 @@ async def query_documents(request: QueryRequest):
         session_id = request.session_id
         if not session_id:
             session_id = rag_system.session_manager.create_session()
-        
+
         # Process query using RAG system
         answer, sources = rag_system.query(request.query, session_id)
-        
+
         return QueryResponse(
             answer=answer,
             sources=sources,
+            session_id=session_id
+        )
+    except AIGeneratorError as e:
+        # Return AI-related errors as user-friendly responses (not HTTP 500)
+        session_id = request.session_id or rag_system.session_manager.create_session()
+        return QueryResponse(
+            answer=str(e),
+            sources=[],
             session_id=session_id
         )
     except Exception as e:
