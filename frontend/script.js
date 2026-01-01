@@ -5,7 +5,21 @@ const API_URL = '/api';
 let currentSessionId = null;
 
 // DOM elements
-let chatMessages, chatInput, sendButton, totalCourses, courseTitles;
+let chatMessages, chatInput, sendButton, totalCourses, courseTitles, themeToggle;
+
+// Theme management - Initialize early to prevent flash
+(function initTheme() {
+    const savedTheme = localStorage.getItem('theme');
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+    // Apply theme: saved preference > system preference > dark default
+    if (savedTheme) {
+        document.documentElement.setAttribute('data-theme', savedTheme);
+    } else if (!systemPrefersDark) {
+        document.documentElement.setAttribute('data-theme', 'light');
+    }
+    // Dark is default (no data-theme attribute needed)
+})();
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,10 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
     sendButton = document.getElementById('sendButton');
     totalCourses = document.getElementById('totalCourses');
     courseTitles = document.getElementById('courseTitles');
-    
+    themeToggle = document.getElementById('themeToggle');
+
     setupEventListeners();
     createNewSession();
     loadCourseStats();
+    updateThemeToggleLabel();
 });
 
 // Event Listeners
@@ -31,6 +47,9 @@ function setupEventListeners() {
 
     // New chat button
     document.getElementById('newChatBtn').addEventListener('click', handleNewChat);
+
+    // Theme toggle
+    themeToggle.addEventListener('click', toggleTheme);
 
     // Suggested questions
     document.querySelectorAll('.suggested-item').forEach(button => {
@@ -210,4 +229,25 @@ async function loadCourseStats() {
             courseTitles.innerHTML = '<span class="error">Failed to load courses</span>';
         }
     }
+}
+
+// Theme Toggle Functions
+function toggleTheme() {
+    const currentTheme = document.documentElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+
+    if (newTheme === 'dark') {
+        document.documentElement.removeAttribute('data-theme');
+    } else {
+        document.documentElement.setAttribute('data-theme', newTheme);
+    }
+
+    localStorage.setItem('theme', newTheme);
+    updateThemeToggleLabel();
+}
+
+function updateThemeToggleLabel() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+    const label = currentTheme === 'light' ? 'Switch to dark mode' : 'Switch to light mode';
+    themeToggle.setAttribute('aria-label', label);
 }
