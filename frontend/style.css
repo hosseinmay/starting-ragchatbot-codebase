@@ -89,9 +89,14 @@ body {
     padding: 0;
 }
 
-/* Header - Hidden */
+/* Header */
 header {
-    display: none;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border-color);
+    padding: 1.5rem 2rem;
+    text-align: center;
+    flex-shrink: 0;
+    box-shadow: var(--shadow);
 }
 
 header h1 {
@@ -871,6 +876,7 @@ details[open] .suggested-header::before {
 /* Theme transition for smooth color changes */
 body,
 .container,
+header,
 .sidebar,
 .chat-main,
 .chat-container,
@@ -893,6 +899,7 @@ body,
     .theme-toggle .moon-icon,
     body,
     .container,
+    header,
     .sidebar,
     .chat-main,
     .chat-container,
