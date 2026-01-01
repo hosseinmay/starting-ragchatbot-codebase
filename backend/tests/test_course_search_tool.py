@@ -37,7 +37,9 @@ class TestCourseSearchToolExecute:
         # Arrange
         mock_results = SearchResults(
             documents=["This is content about Claude API"],
-            metadata=[{"course_title": "Building Towards Computer Use", "lesson_number": 1}],
+            metadata=[
+                {"course_title": "Building Towards Computer Use", "lesson_number": 1}
+            ],
             distances=[0.15],
             error=None,
         )
@@ -157,7 +159,9 @@ class TestCourseSearchToolExecute:
     ) -> None:
         """Test handling of course name resolution failure."""
         # Arrange
-        mock_results = SearchResults.empty("No course found matching 'NonExistentCourse'")
+        mock_results = SearchResults.empty(
+            "No course found matching 'NonExistentCourse'"
+        )
         mock_vector_store.search.return_value = mock_results
 
         # Act
@@ -450,7 +454,9 @@ class TestToolManager:
         manager.register_tool(tool)
 
         # Act
-        result = manager.execute_tool("search_course_content", query="test", course_name="MCP")
+        result = manager.execute_tool(
+            "search_course_content", query="test", course_name="MCP"
+        )
 
         # Assert
         mock_vector_store.search.assert_called_once_with(

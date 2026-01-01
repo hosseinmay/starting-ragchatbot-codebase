@@ -141,7 +141,9 @@ class TestRAGSystemQuery:
             "session_1"
         )
         call_kwargs = mock_rag_system.ai_generator.generate_response.call_args[1]
-        assert call_kwargs["conversation_history"] == "User: Previous\nAssistant: Answer"
+        assert (
+            call_kwargs["conversation_history"] == "User: Previous\nAssistant: Answer"
+        )
 
     def test_query_adds_exchange_to_session(
         self,
@@ -377,7 +379,9 @@ class TestRAGSystemRealIntegration:
         except anthropic.APIError as e:
             pytest.fail(f"API error - this causes 'query failed': {e}")
         except Exception as e:
-            pytest.fail(f"Unexpected error - this causes 'query failed': {type(e).__name__}: {e}")
+            pytest.fail(
+                f"Unexpected error - this causes 'query failed': {type(e).__name__}: {e}"
+            )
 
     @pytest.mark.integration
     @pytest.mark.skipif(
